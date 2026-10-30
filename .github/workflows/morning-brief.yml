@@ -1,0 +1,49 @@
+name: 隔夜财经早报
+
+on:
+  schedule:
+    # UTC 0:00 = 北京时间 08:00；周一到周六触发，脚本内部再判断是否为A股交易日
+    - cron: "0 0 * * 1-6"
+  workflow_dispatch: {}   # 支持手动触发（首次测试用）
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: 生成早报
+        env:
+          TZ: Asia/Shanghai
+        run: python daily_report.py
+
+      - name: 上传页面
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: 部署到 GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
