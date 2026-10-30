@@ -354,6 +354,12 @@ def collect():
     if not session_date:
         session_date = (now - timedelta(days=1)).date()
     model["us"] = {"session_date": session_date, "indices": us}
+    # 三个美股指数涨跌幅同时为 0 时，判定为盘前/数据未更新，避免误导性地显示“收平”
+    if us and all((u["pct"] == 0.0) for u in us):
+        model["us"]["stale"] = True
+        for u in us:
+            u["pct"] = None
+            u["chg"] = None
 
     sox = sina.get("gb_sox")
     model["us"]["sox"] = ({"name": "费城半导体", "px": float(sox[1]), "pct": float(sox[2])}
@@ -657,8 +663,9 @@ def build_view(m):
         vol_txt = ("较前日缩量 %.1f%%" % abs(dlt * 100)) if dlt < 0 else ("较前日放量 %.1f%%" % (dlt * 100))
     zt = m["a"].get("limit_up")
     zt_txt = ("、涨停 %d 家" % zt["count"]) if zt else ""
-    us_desc = "集体收跌" if all((x["pct"] or 0) < 0 for x in m["us"]["indices"]) else (
-        "集体收涨" if all((x["pct"] or 0) > 0 for x in m["us"]["indices"]) else "涨跌互现")
+    us_desc = "数据未更新" if m["us"].get("stale") else (
+        "集体收跌" if all((x["pct"] or 0) < 0 for x in m["us"]["indices"]) else (
+            "集体收涨" if all((x["pct"] or 0) > 0 for x in m["us"]["indices"]) else "涨跌互现"))
     cyb = a_idx.get("创业板指", {}).get("pct")
     a_desc = "上证 %s" % fmt_pct(sh.get("pct"))
     if cyb is not None and abs(cyb) >= 1.5:
@@ -812,12 +819,17 @@ def build_html(m):
     cards = []
     for x in m["us"]["indices"]:
         c = color_of(x["pct"])
+        chg = x.get("chg")
+        if chg is None:
+            prev_txt, chg_txt = "昨收 —", "—"
+        else:
+            prev_txt, chg_txt = "昨收 %.2f" % (x["px"] - chg), "%+.2f" % chg
         cards.append("""
-<div class="card"><div class="n"><span>%s</span><i>昨收 %.2f</i></div>
+<div class="card"><div class="n"><span>%s</span><i>%s</i></div>
 <div class="p" style="color:%s">%s</div>
-<div class="c" style="color:%s">%s（%+.2f）</div></div>""" % (
-            x["name"], x["px"] - x["chg"], c, "{:,.2f}".format(x["px"]), c,
-            fmt_pct(x["pct"]), x["chg"]))
+<div class="c" style="color:%s">%s（%s）</div></div>""" % (
+            x["name"], prev_txt, c, "{:,.2f}".format(x["px"]), c,
+            fmt_pct(x["pct"]), chg_txt))
     chips = []
     if m["us"].get("sox"):
         s = m["us"]["sox"]
