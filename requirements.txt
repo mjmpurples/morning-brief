@@ -1,0 +1,4 @@
+requests
+Pillow
+chinese-calendar
+playwright
